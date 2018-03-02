@@ -67,6 +67,9 @@ namespace {
 /**
  * @brief Greatest common denominator
  *
+ * gcd algorithm ref:
+ * Knuth, Donald. "Art of Computer Programming", Volume 2, Third edition, pp. 337
+ *
  * @param a First number
  * @param b Second number
  *
@@ -76,14 +79,12 @@ template <typename T>
 T
 gcd( T a, T b )
 {
-  for ( ; ; )
+  while (b != 0)
   {
-    if ( a == 0 ) { return b; }
-    b %= a;
-
-    if ( b == 0 ) { return a; }
-    a %= b;
-  } // end for
+    T r = a % b;
+    a = b;
+    b = r;
+  } // end while
 }
 
 
