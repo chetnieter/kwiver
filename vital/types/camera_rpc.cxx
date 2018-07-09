@@ -99,7 +99,7 @@ camera_rpc
 
   // Apply gradient descendent until convergence. Should converge
   // in a few interations.
-  for ( int i = 0; i < 10; ++i )
+  for ( int i = 0; i < 100; ++i )
   {
     matrix_2x2d J;
     vector_2d pt;
