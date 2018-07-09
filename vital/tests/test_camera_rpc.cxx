@@ -40,8 +40,6 @@
 
 #include <iostream>
 
-static double epsilon = 1e-8;
-
 // ----------------------------------------------------------------------------
 int main(int argc, char** argv)
 {
@@ -159,7 +157,7 @@ TEST_F(camera_rpc, projection)
   {
     auto img_pt = cam.project( test_points[i] );
 
-    EXPECT_MATRIX_NEAR( img_pt, test_image_points[i], epsilon );
+    EXPECT_MATRIX_NEAR( img_pt, test_image_points[i], 1.e-8 );
   }
 }
 
@@ -174,6 +172,6 @@ TEST_F(camera_rpc, back_projection)
     auto img_pt = cam.project( test_points[i] );
     auto new_pt = cam.back_project( img_pt, test_points[i][2] );
 
-    EXPECT_MATRIX_NEAR( new_pt, test_points[i], epsilon );
+    EXPECT_MATRIX_NEAR( new_pt, test_points[i], 1.e-6 );
   }
 }
