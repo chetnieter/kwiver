@@ -45,7 +45,6 @@ script:
           -DCMAKE_INSTALL_PREFIX=$HOME/install
           -Dfletch_DIR=/opt/kitware/fletch/share/cmake/
           -DKWIVER_ENABLE_ARROWS=ON
-          -DKWIVER_ENABLE_CERES=ON
           -DKWIVER_ENABLE_C_BINDINGS=ON
           -DKWIVER_ENABLE_DOCS=OFF
           -DKWIVER_ENABLE_LOG4CXX=OFF
@@ -64,4 +63,4 @@ script:
           ../
   - make -j2
   - make install
-  - ctest
+  - ctest -VV -R camera_rpc.back_projection

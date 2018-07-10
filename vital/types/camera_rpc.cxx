@@ -108,8 +108,11 @@ camera_rpc
 
     vector_2d step = J.colPivHouseholderQr().solve( norm_pt - pt );
     rslt.head( 2 ) += step;
+    std::cout << "RPC step error = " << step.cwiseAbs().maxCoeff()
+              << " at step " << i << std::endl;
     if ( step.cwiseAbs().maxCoeff() < 1.e-16 )
     {
+      std::cout << "RPC converged at step " << i << std::endl;
       break;
     }
   }
