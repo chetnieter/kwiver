@@ -722,7 +722,7 @@ main( int argc, char* argv[] )
   {
     // It is somewhat problematic to keep these in sync with the CMake values
     vpm.add_search_path(kwiver::vital::get_executable_path() + "/../lib/kwiver/modules");
-    vpm.add_search_path(kwiver::vital::get_executable_path() + "/../lib/kwiver/sprokit");
+    vpm.add_search_path(kwiver::vital::get_executable_path() + "/../lib/kwiver/processes");
   }
 
   char** newArgv = 0;
