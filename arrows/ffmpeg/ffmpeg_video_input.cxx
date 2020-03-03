@@ -70,7 +70,6 @@ class ffmpeg_video_input::priv
 public:
   /// Constructor
   priv() :
-    f_format_context(nullptr),
     f_video_index(-1),
     f_data_index(-1),
     f_video_encoding(nullptr),
@@ -334,22 +333,9 @@ public:
     this->f_data_index = -1;
     this->f_start_time = -1;
 
-    if (this->f_video_stream)
-    {
-      avcodec_close(this->f_video_stream->codec);
-      this->f_video_stream = nullptr;
-    }
-    if (this->f_format_context)
-    {
-      avformat_close_input(&this->f_format_context);
-      this->f_format_context = nullptr;
-    }
-    if (this->f_video_encoding)
-    {
-      avcodec_close(this->f_video_encoding);
-      avcodec_free_context(&this->f_video_encoding);
-      this->f_video_encoding = nullptr;
-    }
+    avformat_close_input(&this->f_format_context);
+    avformat_free_context(this->f_format_context);
+    avcodec_free_context(&this->f_video_encoding);
   }
 
   // ==================================================================
@@ -928,19 +914,19 @@ ffmpeg_video_input
     return nullptr;
   }
 
-  AVCodecContext* enc = d->f_format_context->streams[d->f_video_index]->codec;
+  AVCodecParameters* params = d->f_format_context->streams[d->f_video_index]->codecpar;
 
   // If we have not already converted this frame, try to convert it
   if (!d->current_image_memory && d->f_frame->data[0] != 0)
   {
-    int width = enc->width;
-    int height = enc->height;
+    int width = params->width;
+    int height = params->height;
     int depth = 3;
     vital::image_pixel_traits pixel_trait = vital::image_pixel_traits_of<unsigned char>();
     bool direct_copy;
 
     // If the pixel format is not recognized by then convert the data into RGB_24
-    switch (enc->pix_fmt)
+    switch (params->format)
     {
       case AV_PIX_FMT_GRAY8:
       {
@@ -969,12 +955,14 @@ ffmpeg_video_input
     }
     if (direct_copy)
     {
-      int size = avpicture_get_size(enc->pix_fmt, width, height);
+      int size = avpicture_get_size((AVPixelFormat)params->format, width, height);
       d->current_image_memory = vital::image_memory_sptr(new vital::image_memory(size));
 
       AVPicture frame;
-      avpicture_fill(&frame, (uint8_t*)d->current_image_memory->data(), enc->pix_fmt, width, height);
-      av_picture_copy(&frame, (AVPicture*)d->f_frame, enc->pix_fmt, width, height);
+      avpicture_fill(&frame, (uint8_t*)d->current_image_memory->data(),
+                     (AVPixelFormat)params->format, width, height);
+      av_picture_copy(&frame, (AVPicture*)d->f_frame, (AVPixelFormat)params->format,
+                      width, height);
     }
     else
     {
@@ -983,7 +971,7 @@ ffmpeg_video_input
 
       d->f_software_context = sws_getCachedContext(
         d->f_software_context,
-        width, height, enc->pix_fmt,
+        width, height, (AVPixelFormat)params->format,
         width, height, AV_PIX_FMT_RGB24,
         SWS_BILINEAR,
         NULL, NULL, NULL);
