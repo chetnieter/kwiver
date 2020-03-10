@@ -81,27 +81,23 @@ public:
     f_frame_number_offset(0),
     video_path(""),
     metadata(0),
-    frame_advanced(0),
+    frame_advanced(false),
     end_of_video(true),
     number_of_frames(0),
     collected_all_metadata(false),
     estimated_num_frames(false)
   {
-    f_packet.data = nullptr;
-
-    // Allocate data for AVFormatContext
+    // Allocate data
     f_format_context = avformat_alloc_context();
   }
 
   // f_* variables are FFMPEG specific
-
   AVFormatContext* f_format_context;
   int f_video_index;
   int f_data_index;
   AVCodecContext* f_video_encoding;
   AVStream* f_video_stream;
   AVFrame* f_frame;
-  AVPacket f_packet;
   SwsContext* f_software_context;
 
 
@@ -143,7 +139,7 @@ public:
   kwiver::vital::image_container_sptr current_image;
 
   // local state
-  int frame_advanced; // This is a boolean check value really
+  bool frame_advanced;
   bool end_of_video;
   size_t number_of_frames;
   bool collected_all_metadata;
@@ -273,11 +269,6 @@ public:
       this->f_frame_number_offset = 1;
     }
 
-    // Not sure if this does anything, but no harm either
-    av_init_packet(&this->f_packet);
-    this->f_packet.data = nullptr;
-    this->f_packet.size = 0;
-
     // Advance to first valid frame to get start time
     this->f_start_time = 0;
     if ( this->advance() )
@@ -303,7 +294,7 @@ public:
                   "Error: failed to return to start after setting start time");
         return false;
     }
-    this->frame_advanced = 0;
+    this->frame_advanced = false;
     this->f_frame->data[0] = NULL;
     return true;
   }
@@ -314,10 +305,6 @@ public:
   */
   void close()
   {
-    if (this->f_packet.data) {
-      av_free_packet(&this->f_packet);  // free last packet
-    }
-
     if (this->f_frame)
     {
       av_freep(&this->f_frame);
@@ -349,36 +336,43 @@ public:
     // Quick return if the file isn't open.
     if (!this->is_opened())
     {
-      this->frame_advanced = 0;
+      this->frame_advanced = false;
       return false;
     }
 
-    if (this->f_packet.data)
-    {
-      av_free_packet(&this->f_packet);  // free previous packet
-    }
-    this->frame_advanced = 0;
+    this->frame_advanced = false;
 
     // clear the metadata from the previous frame
     this->metadata.clear();
 
-    while (this->frame_advanced == 0 && av_read_frame(this->f_format_context, &this->f_packet) >= 0)
+    // Allocate packet
+    AVPacket* packet = av_packet_alloc();
+
+    while (!this->frame_advanced &&
+           av_read_frame(this->f_format_context, packet) >= 0)
     {
       // Make sure that the packet is from the actual video stream.
-      if (this->f_packet.stream_index == this->f_video_index)
+      if (packet->stream_index == this->f_video_index)
       {
-        int err = avcodec_decode_video2(this->f_video_encoding,
-          this->f_frame, &this->frame_advanced,
-          &this->f_packet);
+        int err = avcodec_send_packet(this->f_video_encoding, packet);
+        if (err < 0)
+        {
+          LOG_ERROR(this->logger, "Error sending packet to decoder");
+          return false;
+        }
+
+        err = avcodec_receive_frame(this->f_video_encoding, this->f_frame);
+
+        // Ignore the frame and move to the next
         if (err == AVERROR_INVALIDDATA)
-        {// Ignore the frame and move to the next
-          av_free_packet(&this->f_packet);
+        {
+          av_packet_unref(packet);
           continue;
         }
         if (err < 0)
         {
           LOG_ERROR(this->logger, "Error decoding packet");
-          av_free_packet(&this->f_packet);
+          av_packet_unref(packet);
           return false;
         }
 
@@ -387,38 +381,23 @@ public:
         {
           this->f_pts = 0;
         }
+
+        this->frame_advanced = true;
       }
 
       // grab the metadata from this packet if from the metadata stream
-      else if (this->f_packet.stream_index == this->f_data_index)
+      else if (packet->stream_index == this->f_data_index)
       {
-        this->metadata.insert(this->metadata.end(), this->f_packet.data,
-          this->f_packet.data + this->f_packet.size);
+        this->metadata.insert(this->metadata.end(), packet->data,
+          packet->data + packet->size);
       }
 
-      if (!this->frame_advanced)
-      {
-        av_free_packet(&this->f_packet);
-      }
+      // De-reference previous packet
+      av_packet_unref(packet);
     }
 
-    // From ffmpeg apiexample.c: some codecs, such as MPEG, transmit the
-    // I and P frame with a latency of one frame. You must do the
-    // following to have a chance to get the last frame of the video.
-    if (!this->frame_advanced)
-    {
-      av_init_packet(&this->f_packet);
-      this->f_packet.data = nullptr;
-      this->f_packet.size = 0;
-
-      int err = avcodec_decode_video2(this->f_video_encoding,
-        this->f_frame, &this->frame_advanced,
-        &this->f_packet);
-      if (err >= 0)
-      {
-        this->f_pts += static_cast<int64_t>(this->stream_time_base_to_frame());
-      }
-    }
+    // Free up packet memory
+    av_packet_free(&packet);
 
     // The cached frame is out of date, whether we managed to get a new
     // frame or not.
@@ -429,7 +408,7 @@ public:
       this->f_frame->data[0] = NULL;
     }
 
-    return static_cast<bool>(this->frame_advanced);
+    return this->frame_advanced;
   }
 
   // ==================================================================
@@ -843,7 +822,7 @@ ffmpeg_video_input
   d->close();
 
   d->video_path = "";
-  d->frame_advanced = 0;
+  d->frame_advanced = false;
   d->end_of_video = true;
   d->number_of_frames = 0;
   d->collected_all_metadata = false;
