@@ -253,6 +253,57 @@ TEST_F(ffmpeg_video_input, end_of_video)
   EXPECT_TRUE(input.end_of_video()) << "End of video after last frame";
 }
 
+static kwiver::vital::path_t rad_file = "/Users/chet.nieter/scratch/diy-ai/test_frame_skipping/22MAR121p0004255saHD_EO_9j000999_HD_EO_4F6AA9D0.mpg";
+
+// ----------------------------------------------------------------------------
+TEST_F(ffmpeg_video_input, simple_read_rad)
+{
+  // make config block
+  kwiver::arrows::ffmpeg::ffmpeg_video_input input;
+
+  input.open(rad_file);
+
+  kwiver::vital::timestamp ts;
+
+  int num_frames = 0;
+  while (input.next_frame(ts))
+  {
+    auto img = input.frame_image();
+
+    ++num_frames;
+    EXPECT_EQ(num_frames, ts.get_frame())
+      << "Frame numbers should be sequential";
+
+    if (num_frames > 300)
+    {
+      break;
+    }
+  }
+}
+
+// ----------------------------------------------------------------------------
+TEST_F(ffmpeg_video_input, simple_read)
+{
+  // make config block
+  kwiver::arrows::ffmpeg::ffmpeg_video_input input;
+
+  kwiver::vital::path_t correct_file = data_dir + "/video.mp4";
+
+  input.open(correct_file);
+
+  kwiver::vital::timestamp ts;
+
+  int num_frames = 0;
+  while (input.next_frame(ts))
+  {
+    auto img = input.frame_image();
+
+    ++num_frames;
+    EXPECT_EQ(num_frames, ts.get_frame())
+      << "Frame numbers should be sequential";
+  }
+}
+
 // ----------------------------------------------------------------------------
 TEST_F(ffmpeg_video_input, read_video)
 {
