@@ -83,6 +83,7 @@ public:
     video_path(""),
     metadata(0),
     frame_advanced(false),
+    flushing_packet(false),
     end_of_video(true),
     number_of_frames(0),
     collected_all_metadata(false),
@@ -142,6 +143,7 @@ public:
 
   // local state
   bool frame_advanced;
+  bool flushing_packet;
   bool end_of_video;
   size_t number_of_frames;
   bool collected_all_metadata;
@@ -298,6 +300,7 @@ public:
         return false;
     }
     this->frame_advanced = false;
+    this->flushing_packet = false;
     this->f_frame->data[0] = NULL;
     return true;
   }
@@ -339,32 +342,63 @@ public:
     // clear the metadata from the previous frame
     this->metadata.clear();
 
-    while (!this->frame_advanced &&
-           av_read_frame(this->f_format_context, this->f_packet) >= 0)
+    while (!this->frame_advanced)
     {
+      if (!flushing_packet)
+      {
+        if (av_read_frame(this->f_format_context, this->f_packet) < 0)
+        {
+          break;
+        }
+      }
+
       // Make sure that the packet is from the actual video stream.
       if (this->f_packet->stream_index == this->f_video_index)
       {
-        int err = avcodec_send_packet(this->f_video_encoding, this->f_packet);
-        if (err < 0)
+        if (!flushing_packet)
         {
-          LOG_ERROR(this->logger, "Error sending packet to decoder");
-          return false;
+          // TODO: deal with AVERROR(EAGAIN) ?
+          int ret = avcodec_send_packet(this->f_video_encoding, this->f_packet);
+          if (ret < 0)
+          {
+            LOG_ERROR(this->logger, "Error sending packet to decoder");
+            av_packet_unref(this->f_packet);
+            return false;
+          }
         }
 
-        err = avcodec_receive_frame(this->f_video_encoding, this->f_frame);
+        int ret = avcodec_receive_frame(this->f_video_encoding, this->f_frame);
 
         // Ignore the frame and move to the next
-        if (err == AVERROR_INVALIDDATA)
+        if (ret == AVERROR_INVALIDDATA)
         {
           av_packet_unref(this->f_packet);
           continue;
         }
-        if (err < 0)
+        // Done flushing packet
+        if (ret == AVERROR_EOF && flushing_packet)
+        {
+          flushing_packet = false;
+          av_packet_unref(this->f_packet);
+          continue;
+        }
+        if (ret < 0)
         {
           LOG_ERROR(this->logger, "Error decoding packet");
           av_packet_unref(this->f_packet);
           return false;
+        }
+
+        // Now flush packet to deal with end of stream issues
+        if (!flushing_packet)
+        {
+          if (avcodec_send_packet(this->f_video_encoding, NULL) < 0)
+          {
+            LOG_ERROR(this->logger, "Error flushing packet");
+            av_packet_unref(this->f_packet);
+            return false;
+          }
+          flushing_packet = true;
         }
 
         this->f_pts = av_frame_get_best_effort_timestamp(this->f_frame);
@@ -375,16 +409,6 @@ public:
 
         this->frame_advanced = true;
       }
-
-      // grab the metadata from this packet if from the metadata stream
-      else if (this->f_packet->stream_index == this->f_data_index)
-      {
-        this->metadata.insert(this->metadata.end(), this->f_packet->data,
-          this->f_packet->data + this->f_packet->size);
-      }
-
-      // De-reference previous packet
-      av_packet_unref(this->f_packet);
     }
 
     // The cached frame is out of date, whether we managed to get a new
@@ -415,6 +439,9 @@ public:
     bool advance_successful = false;
     do
     {
+      // Reset packet flushing
+      this->flushing_packet = false;
+
       auto seek_rslt = av_seek_frame( this->f_format_context,
                                       this->f_video_index, frame_ts,
                                       AVSEEK_FLAG_BACKWARD );
