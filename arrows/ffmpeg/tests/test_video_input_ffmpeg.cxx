@@ -711,3 +711,49 @@ TEST_F ( ffmpeg_video_input, hflip_filter_desc )
     kwiver::vital::simple_image_container( hflip_image( frame->get_image() ) );
   EXPECT_EQ( decode_barcode( hflip_frame ), 2 );
 }
+
+static kwiver::vital::path_t rad_file = "/Users/chet.nieter/gdrive/projects/kwiver/test_frame_skipping/radiance_test_2sec.ts";
+
+// ----------------------------------------------------------------------------
+TEST_F(ffmpeg_video_input, simple_read_rad)
+{
+  // make config block
+  kwiver::arrows::ffmpeg::ffmpeg_video_input input;
+
+  input.open(rad_file);
+
+  kwiver::vital::timestamp ts;
+
+  int num_frames = 0;
+  while (input.next_frame(ts))
+  {
+    auto img = input.frame_image();
+
+    ++num_frames;
+    EXPECT_EQ(num_frames, ts.get_frame())
+      << "Frame numbers should be sequential";
+  }
+}
+
+// ----------------------------------------------------------------------------
+TEST_F(ffmpeg_video_input, simple_read)
+{
+  // make config block
+  kwiver::arrows::ffmpeg::ffmpeg_video_input input;
+
+  kwiver::vital::path_t correct_file = data_dir + "/video.mp4";
+
+  input.open(correct_file);
+
+  kwiver::vital::timestamp ts;
+
+  int num_frames = 0;
+  while (input.next_frame(ts))
+  {
+    auto img = input.frame_image();
+
+    ++num_frames;
+    EXPECT_EQ(num_frames, ts.get_frame())
+      << "Frame numbers should be sequential";
+  }
+}
