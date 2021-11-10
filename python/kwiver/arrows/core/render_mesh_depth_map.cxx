@@ -7,8 +7,30 @@
 #include <arrows/core/render_mesh_depth_map.h>
 #include <arrows/core/mesh_intersect.h>
 #include <arrows/core/mesh_operations.h>
+#include <pybind11/stl.h>
 #include <vital/types/mesh.h>
 #include <vital/types/camera.h>
+
+std::vector<py::tuple>
+run_mesh_closest_points(
+  std::vector<kwiver::vital::point_3d> const& points,
+  std::shared_ptr<kwiver::vital::mesh> const mesh,
+  py::list closest_points)
+{
+  std::vector<py::tuple> retVal;
+
+  for ( auto& p : points )
+  {
+    double u, v;
+    kwiver::vital::point_3d closest_point;
+    auto triangle_idx = kwiver::arrows::core::mesh_closest_point(
+      p, *mesh, closest_point, u, v);
+    retVal.push_back(py::make_tuple(triangle_idx, u, v));
+    closest_points.append(closest_point);
+  }
+
+  return retVal;
+}
 
 py::tuple
 run_mesh_closest_point(
@@ -54,6 +76,7 @@ void render_mesh_depth_map(py::module &m)
         {
           return kwiver::arrows::core::clip_mesh(*mesh, *cam);
         });
+  m.def("mesh_closest_points", &run_mesh_closest_points);
   m.def("mesh_closest_point", &run_mesh_closest_point);
   m.def("mesh_intersect", &run_mesh_intersect);
 }
