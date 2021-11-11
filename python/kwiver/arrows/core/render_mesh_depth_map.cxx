@@ -7,6 +7,7 @@
 #include <arrows/core/render_mesh_depth_map.h>
 #include <arrows/core/mesh_intersect.h>
 #include <arrows/core/mesh_operations.h>
+#include <omp.h>
 #include <pybind11/stl.h>
 #include <vital/types/mesh.h>
 #include <vital/types/camera.h>
@@ -19,14 +20,24 @@ run_mesh_closest_points(
 {
   std::vector<py::tuple> retVal;
 
-  for ( auto& p : points )
+  // std vector is not thread safe
+  std::unique_ptr<double []> u_vals(new double[points.size()]);
+  std::unique_ptr<double []> v_vals(new double[points.size()]);
+  std::unique_ptr<int []> idx_vals(new int[points.size()]);
+  std::unique_ptr<kwiver::vital::point_3d []> cp_vals(
+      new kwiver::vital::point_3d[points.size()]);
+
+  #pragma omp parallel for
+  for ( unsigned int i = 0; i < points.size(); ++i )
   {
-    double u, v;
-    kwiver::vital::point_3d closest_point;
-    auto triangle_idx = kwiver::arrows::core::mesh_closest_point(
-      p, *mesh, closest_point, u, v);
-    retVal.push_back(py::make_tuple(triangle_idx, u, v));
-    closest_points.append(closest_point);
+    idx_vals[i] = kwiver::arrows::core::mesh_closest_point(
+      points[i], *mesh, cp_vals[i], u_vals[i], v_vals[i]);
+  }
+
+  for ( unsigned int i = 0; i < points.size(); ++i )
+  {
+    retVal.push_back(py::make_tuple(idx_vals[i], u_vals[i], v_vals[i]));
+    closest_points.append(cp_vals[i]);
   }
 
   return retVal;
