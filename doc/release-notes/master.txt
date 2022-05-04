@@ -10,6 +10,10 @@ Updates
 
 Vital
 
+Vital Algo
+
+* Added API for algorithms to find nearest neighbor to a set of point in 3D.
+
 Vital Types
 
 * Modified rotation_ constructor from yaw-pitch-roll to keep the given
@@ -70,6 +74,10 @@ Arrows: KLV
 Arrows: Serialize
 
 * Added partial KLV-JSON reader/writer.
+
+Arrows: VXL
+
+* Added a implementation of the new nearest neighbors algorithm based off the VXL implementation of KDTrees.
 
 Bug Fixes
 ---------
