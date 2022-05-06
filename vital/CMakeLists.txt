@@ -10,6 +10,7 @@ set(CMAKE_FOLDER "Vital")
 # Create the kwsys library for vital.
 set(KWSYS_NAMESPACE                kwiversys)
 set(KWSYS_USE_DynamicLoader        1)
+set(KWSYS_USE_Glob                 1)
 set(KWSYS_USE_SystemTools          1)
 set(KWSYS_USE_System               1)
 set(KWSYS_USE_RegularExpression    1)
