@@ -7,12 +7,14 @@ set( sources
 
   dump_klv.cxx
   render_mesh.cxx
+  texture_from_pointcloud.cxx
   transcode.cxx
   )
 
 set( headers
   dump_klv.h
   render_mesh.h
+  texture_from_pointcloud.h
   transcode.h
   )
 
