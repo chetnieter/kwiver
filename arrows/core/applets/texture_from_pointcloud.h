@@ -20,8 +20,8 @@ class KWIVER_ALGO_CORE_APPLETS_EXPORT texture_from_pointcloud
   : public kwiver::tools::kwiver_applet
 {
 public:
-  texture_from_pointcloud(){}
-  virtual ~texture_from_pointcloud() = default;
+  texture_from_pointcloud();
+  virtual ~texture_from_pointcloud();
 
   PLUGIN_INFO( "texture-from-pointcloud",
                "Texture a set of meshes from point cloud data.\n\n"
@@ -34,6 +34,9 @@ public:
 protected:
 
 private:
+  class priv;
+  std::unique_ptr<priv> d;
+
 
 }; // end of class
 

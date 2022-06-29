@@ -51,28 +51,32 @@ static kwiver::vital::config_block_sptr default_config()
 
 } // end namespace
 
+class texture_from_pointcloud::priv
+{
+public:
+  priv() {}
+};
+
 // ----------------------------------------------------------------------------
 void
 texture_from_pointcloud::
 add_command_options()
 {
   m_cmd_options->custom_help( wrap_text(
-       "This tool renders a mesh into a depth or height image\n"
+       "This tool texures a set of meshes using point cloud data.\n"
        "\n"
-       "Usage: kwiver " + applet_name() + " [options] mesh camera image"
+       "Usage: kwiver " + applet_name() + " [options] mesh-dir point-cloud-file"
           ) );
 
   m_cmd_options->positional_help( "\n mesh-dir         - directory that holds "
-                                  "the mesh files.\n"
-                                  "   point-cloud-file - camera file name.\n"
-                                  "   output - Output image file name");
+                                  "the mesh files."
+                                  "\n point-cloud-file - the file that contains "
+                                  "the point cloud data.");
 
   m_cmd_options->add_options()
     ( "h,help",        "Display usage information" )
     ( "c",             "Configuration file for tool" )
     ( "output-config", "Dump configuration for tool", cxxopts::value<std::string>() )
-    ( "x",             "Texture image width", cxxopts::value<int>()->default_value( "1920" ) )
-    ( "y",             "Texture image height", cxxopts::value<int>()->default_value( "1080" ) )
 
     // positional parameters
     ( "mesh-dir",          "Mesh directory", cxxopts::value<std::string>() )
@@ -162,5 +166,14 @@ run()
 
   return EXIT_SUCCESS;
 }
+
+// ----------------------------------------------------------------------------
+texture_from_pointcloud::
+texture_from_pointcloud()
+ : d(new priv())
+{ }
+
+texture_from_pointcloud::
+~texture_from_pointcloud() = default;
 
 } } } // end namespace
