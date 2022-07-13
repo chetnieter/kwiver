@@ -166,11 +166,8 @@ public:
   void
   initialize()
   {
-    config = this->default_config();
-
+    // Create algorithm from configuration
     kwiver::vital::algo::nearest_neighbors::set_nested_algo_configuration(
-      "nearest_neighbors", config, nn_search );
-    kwiver::vital::algo::nearest_neighbors::get_nested_algo_configuration(
       "nearest_neighbors", config, nn_search );
   }
 
@@ -197,17 +194,13 @@ texture_from_pointcloud
                                   "\n point-cloud-file - the file that contains "
                                   "the point cloud data." );
 
-  m_cmd_options->add_options()( "h,help",
-                                "Display usage information" )( "c",
-                                                               "Configuration file for tool" )(
-    "output-config",
-    "Dump configuration for tool",
-    cxxopts::value< std::string >() )
-  // positional parameters
-    ( "mesh-dir",          "Mesh directory",
-    cxxopts::value< std::string >() )( "point-cloud-file",
-                                       "Point cloud file name",
-                                       cxxopts::value< std::string >() );
+  m_cmd_options->add_options()
+    ( "h,help",           "Display usage information" )
+    ( "c,config",         "Configuration file for tool" )
+    ("o,output-config",   "Dump configuration for tool", cxxopts::value< std::string >() )
+    // positional parameters
+    ( "mesh-dir",         "Mesh directory", cxxopts::value< std::string >() )
+    ( "point-cloud-file", "Point cloud file name", cxxopts::value< std::string >() );
 
   m_cmd_options->parse_positional( { "mesh-dir", "point-cloud-file" } );
 }
@@ -219,80 +212,47 @@ int
 texture_from_pointcloud
   ::run()
 {
-  auto& cmd_args = command_args();
-
-  if( cmd_args[ "help" ].as< bool >() )
+  try
   {
-    std::cout << m_cmd_options->help();
-    return EXIT_SUCCESS;
-  }
-
-  // If we are not writing out the config, then all positional file
-  // names are required.
-  if( cmd_args.count( "output-config" ) == 0 )
-  {
-    if( ( cmd_args.count( "mesh-dir" ) == 0 ) ||
-        ( cmd_args.count( "point-cloud-file" ) == 0 ) )
+    switch(d->process_command_line(command_args()))
     {
-      std::cout << "Missing direcotry and/or file name.\n" <<
-        "Usage: " << applet_name() <<
-        " mesh-dir point-cloud-file\n" <<
-        std::endl;
-
-      return EXIT_FAILURE;
+      case priv::HELP:
+        std::cout << m_cmd_options->help();
+        return EXIT_SUCCESS;
+      case priv::WRITE:
+        return EXIT_SUCCESS;
+      case priv::FAIL:
+        return EXIT_FAILURE;
+      case priv::SUCCESS:
+        ;
     }
-  }
 
-  // If --config given, read in config file, merge in with default just
-  // generated
-  if( cmd_args.count( "c" ) > 0 )
-  {
-    d->config->merge_config( kwiver::vital::read_config_file(
-                               cmd_args[ "c" ].as< std::string >() ) );
-  }
-
-  // Check to see if we are to dump config
-  if( cmd_args.count( "output-config" ) > 0 )
-  {
-    opt_out_config = cmd_args[ "output-config" ].as< std::string >();
-    std::ofstream fout( opt_out_config );
-    if( !fout )
+    if ( d->config == nullptr )
     {
-      std::cout << "Couldn't open \"" << opt_out_config << "\" for writing.\n";
       return EXIT_FAILURE;
     }
 
-    kwiver::vital::config_block_formatter fmt( d->config );
-    fmt.print( fout );
-    std::cout << "Wrote config to \"" << opt_out_config << "\". Exiting.\n";
+    d->initialize();
+
+    LOG_INFO(main_logger, "Finished configuring");
+    d->run_algorithm();
+    LOG_INFO(main_logger, "Finished computing");
+
     return EXIT_SUCCESS;
   }
-
-  if( !kwiver::vital::algo::nearest_neighbors::check_nested_algo_configuration(
-        "nearest_neighbors", d->config ) )
+  catch (std::exception const& e)
   {
-    std::cerr << "Invalid nearest_neighbors config" << std::endl;
+    LOG_ERROR(main_logger, "Exception caught: " << e.what());
+
     return EXIT_FAILURE;
   }
+  catch (...)
+  {
+    LOG_ERROR(main_logger, "Unknown exception caught");
 
-  const std::string mesh_dir = cmd_args[ "mesh-dir" ].as< std::string >();
-  const std::string point_cloud_file =
-    cmd_args[ "point-cloud-file" ].as< std::string >();
-
-  opt_width = cmd_args[ "x" ].as< int >();
-  opt_height = cmd_args[ "y" ].as< int >();
-
-  // std::cout << "Reading Mesh" << std::endl;
-  // auto mesh = kwiver::vital::read_mesh(mesh_file);
-
-  // if ( mesh->faces().regularity() != 3 )
-  // {
-  //   std::cout << "Triangulating Mesh" << std::endl;
-  //   kwiver::arrows::core::mesh_triangulate(*mesh);
-  // }
-
-  return EXIT_SUCCESS;
-}
+    return EXIT_FAILURE;
+  }
+} // run
 
 // ----------------------------------------------------------------------------
 
