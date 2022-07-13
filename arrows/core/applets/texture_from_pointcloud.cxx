@@ -12,6 +12,7 @@
 #include <iostream>
 
 #include <vital/algo/nearest_neighbors.h>
+#include <vital/algo/pointcloud_io.h>
 #include <vital/applets/config_validation.h>
 #include <vital/config/config_block.h>
 #include <vital/config/config_block_formatter.h>
@@ -71,6 +72,7 @@ public:
 
   kwiver::vital::config_block_sptr config;
   kwiver::vital::algo::nearest_neighbors_sptr nn_search;
+  kwiver::vital::algo::pointcloud_io_sptr point_cloud_reader;
 
   kwiver::vital::path_t mesh_directory;
   kwiver::vital::path_t point_cloud_file;
@@ -156,6 +158,9 @@ public:
     config->set_value( "nearest_neighbors:type", "vxl_kd_tree",
                        "Implementation for nearest neighbor search." );
 
+    config->set_value( "pointcloud_io:type", "pdal",
+                       "Implementation of point cloud reader.");
+
     kwiver::vital::algo::nearest_neighbors::get_nested_algo_configuration(
       "nearest_neighbors", config,
       kwiver::vital::algo::nearest_neighbors_sptr() );
@@ -169,6 +174,8 @@ public:
     // Create algorithm from configuration
     kwiver::vital::algo::nearest_neighbors::set_nested_algo_configuration(
       "nearest_neighbors", config, nn_search );
+    kwiver::vital::algo::pointcloud_io::set_nested_algo_configuration(
+      "pointcloud_io", config, point_cloud_reader );
   }
 
   void
@@ -232,7 +239,10 @@ texture_from_pointcloud
       return EXIT_FAILURE;
     }
 
-    d->initialize();
+    if( d->nn_search == nullptr || d->point_cloud_reader == nullptr )
+    {
+      d->initialize();
+    }
 
     LOG_INFO(main_logger, "Finished configuring");
     d->run_algorithm();
