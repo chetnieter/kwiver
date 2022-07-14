@@ -11,6 +11,9 @@
 #include <fstream>
 #include <iostream>
 
+#include <kwiversys/Directory.hxx>
+#include <kwiversys/SystemTools.hxx>
+
 #include <vital/algo/nearest_neighbors.h>
 #include <vital/algo/pointcloud_io.h>
 #include <vital/applets/config_validation.h>
@@ -29,11 +32,6 @@ namespace kwiver {
 namespace arrows {
 namespace core {
 namespace {
-// Global options
-std::string opt_out_config;     // output config file name
-
-int opt_width;
-int opt_height;
 
 kwiver::vital::logger_handle_t main_logger( kwiver::vital::get_logger(
                                               "texture_from_pointcloud" ) );
@@ -55,7 +53,7 @@ check_config( kwiver::vital::config_block_sptr config )
     config_valid;
 
   config_valid =
-    validate_required_input_file( "point-cloud-file", *config, main_logger ) &&
+    validate_required_input_file( "point_cloud_file", *config, main_logger ) &&
     config_valid;
 
 #undef KWIVER_CONFIG_FAIL
@@ -77,6 +75,8 @@ public:
   kwiver::vital::path_t mesh_directory;
   kwiver::vital::path_t point_cloud_file;
 
+  std::string mesh_extension = ".obj";
+
   enum commandline_mode { SUCCESS, HELP, WRITE, FAIL };
 
   commandline_mode
@@ -96,6 +96,10 @@ public:
     if( cmd_args.count( "output-config" ) > 0 )
     {
       opt_out_config = cmd_args[ "output-config" ].as< std::string >();
+    }
+    if( cmd_args.count( "mesh-ext" ) > 0 )
+    {
+      mesh_extension = cmd_args[ "mesh-ext" ].as< std::string >();
     }
 
     // Set up top level configuration w/ defaults where applicable.
@@ -137,7 +141,7 @@ public:
       config = nullptr;
       return WRITE;
     }
-    else if( valid_config )
+    else if( !valid_config )
     {
       LOG_ERROR( main_logger, "Configuration not valid." );
       config = nullptr;
@@ -181,6 +185,21 @@ public:
   void
   run_algorithm()
   {
+    auto point_cloud = point_cloud_reader->load(point_cloud_file);
+
+    kwiversys::Directory mesh_dir;
+    mesh_dir.Load(mesh_directory);
+    auto num_mesh_files = mesh_dir.GetNumberOfFiles();
+    for (unsigned long i = 0; i < num_mesh_files; ++i )
+    {     
+      std::string mesh_file = mesh_dir.GetPath();
+      mesh_file += "/" + std::string( mesh_dir.GetFile( i ) );
+      if ( kwiversys::SystemTools::GetFilenameLastExtension( mesh_file ) == mesh_extension )
+      {
+        std::cout << "MESH_FILE: " << mesh_file << std::endl;
+        auto input_mesh = kwiver::vital::read_mesh( mesh_file );
+      }
+    }    
   }
 };
 
@@ -202,9 +221,10 @@ texture_from_pointcloud
                                   "the point cloud data." );
 
   m_cmd_options->add_options()
-    ( "h,help",           "Display usage information" )
-    ( "c,config",         "Configuration file for tool" )
-    ("o,output-config",   "Dump configuration for tool", cxxopts::value< std::string >() )
+    ( "h,help",          "Display usage information" )
+    ( "c,config",        "Configuration file for tool" )
+    ( "o,output-config", "Dump configuration for tool", cxxopts::value< std::string >() )
+    ( "m,mesh-ext",      "Mesh file extension, defaults to *.obj", cxxopts::value< std::string >() )
     // positional parameters
     ( "mesh-dir",         "Mesh directory", cxxopts::value< std::string >() )
     ( "point-cloud-file", "Point cloud file name", cxxopts::value< std::string >() );
