@@ -31,13 +31,13 @@ public:
   int run() override;
   void add_command_options() override;
 
-protected:
 private:
   class priv;
   std::unique_ptr< priv > d;
 }; // end of class
+
 } // namespace core
 } // namespace arrows
-}     // end namespace
+} // end namespace
 
 #endif /* KWIVER_ARROWS_CORE_TOOLS_TEXTURE_FROM_POINTCLOUD_H */

@@ -16,12 +16,16 @@
 
 #include <vital/algo/nearest_neighbors.h>
 #include <vital/algo/pointcloud_io.h>
+#include <vital/algo/uv_unwrap_mesh.h>
 #include <vital/applets/config_validation.h>
 #include <vital/config/config_block.h>
 #include <vital/config/config_block_formatter.h>
 #include <vital/config/config_block_io.h>
 #include <vital/exceptions.h>
 #include <vital/io/mesh_io.h>
+#include <vital/types/image_container.h>
+#include <vital/types/mesh.h>
+#include <vital/types/pointcloud.h>
 #include <vital/util/get_paths.h>
 
 #include <vital/plugin_loader/plugin_manager.h>
@@ -71,6 +75,7 @@ public:
   kwiver::vital::config_block_sptr config;
   kwiver::vital::algo::nearest_neighbors_sptr nn_search;
   kwiver::vital::algo::pointcloud_io_sptr point_cloud_reader;
+  kwiver::vital::algo::uv_unwrap_mesh_sptr uv_unwrapper;
 
   kwiver::vital::path_t mesh_directory;
   kwiver::vital::path_t point_cloud_file;
@@ -85,15 +90,15 @@ public:
     static std::string opt_config;
     static std::string opt_out_config;
 
-    if( cmd_args[ "help" ].as< bool >() )
+    if ( cmd_args[ "help" ].as< bool >() )
     {
       return HELP;
     }
-    if( cmd_args.count( "config" ) > 0 )
+    if ( cmd_args.count( "config" ) > 0 )
     {
       opt_config = cmd_args[ "config" ].as< std::string >();
     }
-    if( cmd_args.count( "output-config" ) > 0 )
+    if ( cmd_args.count( "output-config" ) > 0 )
     {
       opt_out_config = cmd_args[ "output-config" ].as< std::string >();
     }
@@ -165,9 +170,21 @@ public:
     config->set_value( "pointcloud_io:type", "pdal",
                        "Implementation of point cloud reader.");
 
+    config->set_value( "uv_unwrap_mesh:type", "core",
+                       "Implementation of uv mesh unwrapper.");
+
     kwiver::vital::algo::nearest_neighbors::get_nested_algo_configuration(
-      "nearest_neighbors", config,
-      kwiver::vital::algo::nearest_neighbors_sptr() );
+                              "nearest_neighbors",
+                              config,
+                              kwiver::vital::algo::nearest_neighbors_sptr() );
+    kwiver::vital::algo::pointcloud_io::get_nested_algo_configuration(
+                              "pointcloud_io",
+                              config,
+                              kwiver::vital::algo::pointcloud_io_sptr() );
+    kwiver::vital::algo::uv_unwrap_mesh::get_nested_algo_configuration(
+                              "uv_unwrap_mesh",
+                              config,
+                              kwiver::vital::algo::uv_unwrap_mesh_sptr() );
 
     return config;
   }
@@ -180,6 +197,8 @@ public:
       "nearest_neighbors", config, nn_search );
     kwiver::vital::algo::pointcloud_io::set_nested_algo_configuration(
       "pointcloud_io", config, point_cloud_reader );
+    kwiver::vital::algo::uv_unwrap_mesh::set_nested_algo_configuration(
+      "uv_unwrap_mesh", config, uv_unwrapper );
   }
 
   void
@@ -190,16 +209,64 @@ public:
     kwiversys::Directory mesh_dir;
     mesh_dir.Load(mesh_directory);
     auto num_mesh_files = mesh_dir.GetNumberOfFiles();
+
+    std::vector<double> utm_corr;
+    bool has_utm_corr = false;
     for (unsigned long i = 0; i < num_mesh_files; ++i )
-    {     
+    {
       std::string mesh_file = mesh_dir.GetPath();
       mesh_file += "/" + std::string( mesh_dir.GetFile( i ) );
       if ( kwiversys::SystemTools::GetFilenameLastExtension( mesh_file ) == mesh_extension )
       {
+        // Check first file for UTM correction
+        if ( !has_utm_corr )
+        {
+          utm_corr = get_utm_correction( mesh_file );
+          has_utm_corr = true;
+        }
+
         std::cout << "MESH_FILE: " << mesh_file << std::endl;
         auto input_mesh = kwiver::vital::read_mesh( mesh_file );
+
+        if ( input_mesh->faces().regularity() != 3 )
+        {
+          kwiver::arrows::core::mesh_triangulate(*input_mesh);
+        }
+
+        uv_unwrapper->unwrap( input_mesh );
       }
-    }    
+    }
+  }
+
+  std::vector<double>
+  get_utm_correction( kwiver::vital::path_t mesh_file )
+  {
+    std::vector<double> correction = {0., 0., 0.};
+
+    std::ifstream file;
+    file.open( mesh_file );
+    std::string line;
+    if ( file )
+    {
+      for ( size_t i = 0; i < 3; ++i )
+      {
+        if ( std::getline( file, line ) )
+        {
+          std::cout << line << std::endl;
+        }
+      }
+    }
+    file.close();
+
+    return correction;
+  }
+
+  //kwiver::vital::image_container_sptr
+  void
+  texture_mesh( kwiver::vital::pointcloud_sptr point_cloud,
+                kwiver::vital::mesh_sptr mesh )
+  {
+
   }
 };
 
@@ -222,7 +289,7 @@ texture_from_pointcloud
 
   m_cmd_options->add_options()
     ( "h,help",          "Display usage information" )
-    ( "c,config",        "Configuration file for tool" )
+    ( "c,config",        "Configuration file for tool", cxxopts::value< std::string >() )
     ( "o,output-config", "Dump configuration for tool", cxxopts::value< std::string >() )
     ( "m,mesh-ext",      "Mesh file extension, defaults to *.obj", cxxopts::value< std::string >() )
     // positional parameters
