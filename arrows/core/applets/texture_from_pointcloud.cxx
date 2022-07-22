@@ -252,7 +252,14 @@ public:
       {
         if ( std::getline( file, line ) )
         {
-          std::cout << line << std::endl;
+          std::vector< std::string > keys = { "#x", "#y", "#z "};
+          for ( size_t j = 0; j < 3; ++j )
+          {
+            if ( line.rfind( keys[j], 0 ) == 0 )
+            {
+              correction[j] = std::stod( line.substr( line.rfind( " " ) ) );
+            }
+          }
         }
       }
     }
