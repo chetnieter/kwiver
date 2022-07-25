@@ -66,6 +66,39 @@ check_config( kwiver::vital::config_block_sptr config )
 }
 } // end namespace
 
+// Get the square of the area of a triangle with Heron's formula
+double triangle_area( std::vector< kwiver::vital::vector_3d > tri )
+{
+  std::vector< double > lens;
+  double s = 0.0;
+  for ( size_t i = 0; i < 3; ++i )
+  {
+    lens.push_back( ( tri[i] - tri[(i+1)%3] ).norm() );
+    s += 0.5*lens.back();
+  }
+
+  return s*(s-lens[0])*(s-lens[1])*(s-lens[2]);
+}
+
+// Get the barycentric coordinates for a point on a triangle
+void barycentric(double& u, double& v,
+                 double x, double y,
+                 std::vector< kwiver::vital::vector_2d > pts )
+{
+  double denom = ( pts[1][1]-pts[2][1] )*( pts[0][0]-pts[2][0] ) +
+                 ( pts[2][0]-pts[1][0] )*( pts[0][1]-pts[2][1] );
+
+  if ( denom == 0. )
+  {
+    return;
+  }
+
+  u = ( ( pts[1][1] - pts[2][1] )*(x - pts[2][0]) +
+        ( pts[2][0] - pts[1][0] )*( y -pts[2][1] ) ) / denom;
+  v = ( ( pts[2][1] - pts[0][1] )*(x - pts[2][0]) +
+        ( pts[0][0] - pts[2][0] )*( y -pts[2][1] ) ) / denom;
+}
+
 class texture_from_pointcloud::priv
 {
 public:
@@ -79,6 +112,10 @@ public:
 
   kwiver::vital::path_t mesh_directory;
   kwiver::vital::path_t point_cloud_file;
+
+  // Hard code image size for now
+  unsigned int img_width = 500;
+  unsigned int img_height = 500;
 
   std::string mesh_extension = ".obj";
 
@@ -204,7 +241,15 @@ public:
   void
   run_algorithm()
   {
-    auto point_cloud = point_cloud_reader->load(point_cloud_file);
+    auto point_cloud = std::make_shared< kwiver::vital::pointcloud_d >(
+      point_cloud_reader->load(point_cloud_file) );
+
+    std::vector< kwiver::vital::point_3d > points;
+    for ( auto pt : point_cloud->positions() )
+    {
+      points.push_back( kwiver::vital::point_3d ( pt ) );
+    }
+    nn_search->build( points );
 
     kwiversys::Directory mesh_dir;
     mesh_dir.Load(mesh_directory);
@@ -234,6 +279,8 @@ public:
         }
 
         uv_unwrapper->unwrap( input_mesh );
+
+        texture_mesh( point_cloud, input_mesh );
       }
     }
   }
@@ -268,12 +315,88 @@ public:
     return correction;
   }
 
-  //kwiver::vital::image_container_sptr
-  void
+  kwiver::vital::image_container_sptr
   texture_mesh( kwiver::vital::pointcloud_sptr point_cloud,
                 kwiver::vital::mesh_sptr mesh )
   {
+    kwiver::vital::image texture_image( img_width, img_height, 3);
 
+    std::shared_ptr< kwiver::vital::mesh_face_array > faces =
+      std::make_shared< kwiver::vital::mesh_face_array >( mesh->faces() );
+    auto vertices = mesh->vertices<3>();
+
+    double img_dx = double(1./img_width);
+    double img_dy = double(1./img_height);
+
+    for ( size_t i = 0; i < mesh->num_faces(); ++i )
+    {
+      double x_min = 1.;
+      double y_min = 1.;
+      double x_max = 0.;
+      double y_max = 0.;
+
+      auto pc_data = point_cloud->colors();
+
+      std::vector< kwiver::vital::vector_2d > tx_coords;
+      std::map < int, int > x_t = { { 0, 0 }, { 1, 1 }, { 2, 0 } };
+      std::map < int, int > y_t = { { 0, 1 }, { 1, 0 }, { 2, 0 } };
+      for ( size_t j = 0; j < 3; ++j )
+      {
+        auto tmp_crd = mesh->texture_map(i, x_t[j], y_t[j]);
+
+        x_min = std::min(tmp_crd[0], x_min);
+        y_min = std::min(tmp_crd[1], y_min);
+        x_max = std::max(tmp_crd[0], x_max);
+        y_max = std::max(tmp_crd[1], y_max);
+
+        tx_coords.push_back( tmp_crd );
+      }
+
+      std::vector< kwiver::vital::vector_3d > corners;
+      for ( auto idx : (*faces)[i] )
+      {
+        corners.push_back( vertices[idx] );
+      }
+
+      std::vector< kwiver::vital::point_3d > pixel_pts;
+      std::vector< kwiver::vital::point_2i > pixel_indices;
+      for ( double x = x_min; x < x_max; x += img_dx )
+      {
+        for ( double y = y_min; y < y_max; y += img_dy )
+        {
+          double u = -1.;
+          double v = -1.;
+
+          barycentric(u, v, x, y, tx_coords);
+
+          pixel_pts.push_back(
+            kwiver::vital::point_3d ( (1. - u - v)*corners[0] +
+                                      v*corners[1] +
+                                      u*corners[2]) );
+
+          pixel_indices.push_back(
+            kwiver::vital::point_2i( int((1. - y)*img_width),
+                                     int(x*img_height) ) );
+        }
+      }
+
+      std::vector< std::vector< int > > closest_indices;
+      std::vector< std::vector< double > > closest_dists;
+      nn_search->find_nearest_points(pixel_pts, 1, closest_indices, closest_dists);
+
+      for ( size_t j = 0; j < pixel_indices.size(); ++j )
+      {
+        auto x_idx = pixel_indices[j][0];
+        auto y_idx = pixel_indices[j][1];
+        auto px_color = pc_data[ closest_indices[j][0] ];
+        texture_image.at<uint8_t>( x_idx, y_idx, 0 ) = px_color.r;
+        texture_image.at<uint8_t>( x_idx, y_idx, 1 ) = px_color.g;
+        texture_image.at<uint8_t>( x_idx, y_idx, 2 ) = px_color.b;
+      }
+    }
+
+    return std::make_shared< kwiver::vital::simple_image_container >(
+      kwiver::vital::simple_image_container( texture_image ) );
   }
 };
 
