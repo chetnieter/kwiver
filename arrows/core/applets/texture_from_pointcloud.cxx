@@ -14,6 +14,7 @@
 #include <kwiversys/Directory.hxx>
 #include <kwiversys/SystemTools.hxx>
 
+#include <vital/algo/image_io.h>
 #include <vital/algo/nearest_neighbors.h>
 #include <vital/algo/pointcloud_io.h>
 #include <vital/algo/uv_unwrap_mesh.h>
@@ -85,18 +86,18 @@ void barycentric(double& u, double& v,
                  double x, double y,
                  std::vector< kwiver::vital::vector_2d > pts )
 {
-  double denom = ( pts[1][1]-pts[2][1] )*( pts[0][0]-pts[2][0] ) +
-                 ( pts[2][0]-pts[1][0] )*( pts[0][1]-pts[2][1] );
+  double denom = ( pts[1][1] - pts[2][1] )*( pts[0][0] - pts[2][0] ) +
+                 ( pts[2][0] - pts[1][0] )*( pts[0][1] - pts[2][1] );
 
   if ( denom == 0. )
   {
     return;
   }
 
-  u = ( ( pts[1][1] - pts[2][1] )*(x - pts[2][0]) +
-        ( pts[2][0] - pts[1][0] )*( y -pts[2][1] ) ) / denom;
-  v = ( ( pts[2][1] - pts[0][1] )*(x - pts[2][0]) +
-        ( pts[0][0] - pts[2][0] )*( y -pts[2][1] ) ) / denom;
+  u = ( ( pts[1][1] - pts[2][1] )*( x - pts[2][0]) +
+        ( pts[2][0] - pts[1][0] )*( y - pts[2][1] ) ) / denom;
+  v = ( ( pts[2][1] - pts[0][1] )*( x - pts[2][0]) +
+        ( pts[0][0] - pts[2][0] )*( y - pts[2][1] ) ) / denom;
 }
 
 class texture_from_pointcloud::priv
@@ -109,6 +110,7 @@ public:
   kwiver::vital::algo::nearest_neighbors_sptr nn_search;
   kwiver::vital::algo::pointcloud_io_sptr point_cloud_reader;
   kwiver::vital::algo::uv_unwrap_mesh_sptr uv_unwrapper;
+  kwiver::vital::algo::image_io_sptr image_writer;
 
   kwiver::vital::path_t mesh_directory;
   kwiver::vital::path_t point_cloud_file;
@@ -210,6 +212,9 @@ public:
     config->set_value( "uv_unwrap_mesh:type", "core",
                        "Implementation of uv mesh unwrapper.");
 
+    config->set_value( "image_io:type", "vxl",
+                       "Implementation of the image writer.");
+
     kwiver::vital::algo::nearest_neighbors::get_nested_algo_configuration(
                               "nearest_neighbors",
                               config,
@@ -222,6 +227,10 @@ public:
                               "uv_unwrap_mesh",
                               config,
                               kwiver::vital::algo::uv_unwrap_mesh_sptr() );
+    kwiver::vital::algo::image_io::get_nested_algo_configuration(
+                              "image_io",
+                              config,
+                              kwiver::vital::algo::image_io_sptr() );
 
     return config;
   }
@@ -236,6 +245,8 @@ public:
       "pointcloud_io", config, point_cloud_reader );
     kwiver::vital::algo::uv_unwrap_mesh::set_nested_algo_configuration(
       "uv_unwrap_mesh", config, uv_unwrapper );
+    kwiver::vital::algo::image_io::set_nested_algo_configuration(
+      "image_io", config, image_writer );
   }
 
   void
@@ -259,8 +270,8 @@ public:
     bool has_utm_corr = false;
     for (unsigned long i = 0; i < num_mesh_files; ++i )
     {
-      std::string mesh_file = mesh_dir.GetPath();
-      mesh_file += "/" + std::string( mesh_dir.GetFile( i ) );
+      std::string mesh_path = mesh_dir.GetPath();
+      std::string mesh_file = mesh_path + "/" + std::string( mesh_dir.GetFile( i ) );
       if ( kwiversys::SystemTools::GetFilenameLastExtension( mesh_file ) == mesh_extension )
       {
         // Check first file for UTM correction
@@ -270,7 +281,6 @@ public:
           has_utm_corr = true;
         }
 
-        std::cout << "MESH_FILE: " << mesh_file << std::endl;
         auto input_mesh = kwiver::vital::read_mesh( mesh_file );
 
         if ( input_mesh->faces().regularity() != 3 )
@@ -280,7 +290,13 @@ public:
 
         uv_unwrapper->unwrap( input_mesh );
 
-        texture_mesh( point_cloud, input_mesh );
+        auto tex_image = texture_mesh( point_cloud, input_mesh );
+
+        std::string image_file = mesh_path + "/" +
+          kwiversys::SystemTools::GetFilenameWithoutExtension( mesh_file ) +
+          ".png";
+
+        image_writer->save( image_file, tex_image );
       }
     }
   }
@@ -319,7 +335,7 @@ public:
   texture_mesh( kwiver::vital::pointcloud_sptr point_cloud,
                 kwiver::vital::mesh_sptr mesh )
   {
-    kwiver::vital::image texture_image( img_width, img_height, 3);
+    kwiver::vital::image texture_image( img_width, img_height, 3 );
 
     std::shared_ptr< kwiver::vital::mesh_face_array > faces =
       std::make_shared< kwiver::vital::mesh_face_array >( mesh->faces() );
@@ -369,14 +385,18 @@ public:
 
           barycentric(u, v, x, y, tx_coords);
 
-          pixel_pts.push_back(
-            kwiver::vital::point_3d ( (1. - u - v)*corners[0] +
-                                      v*corners[1] +
-                                      u*corners[2]) );
+          if ( ( 0. <= u ) && ( u <= 1.) && ( 0. <= v ) &&
+               ( v <= 1. ) && ( u + v <= 1. ) )
+          {
+            pixel_pts.push_back(
+              kwiver::vital::point_3d ( (1. - u - v)*corners[0] +
+                                        v*corners[1] +
+                                        u*corners[2]) );
 
-          pixel_indices.push_back(
-            kwiver::vital::point_2i( int((1. - y)*img_width),
-                                     int(x*img_height) ) );
+            pixel_indices.push_back(
+              kwiver::vital::point_2i( int( x*img_width ),
+                                      int( (1. - y)*img_height ) ) );
+          }
         }
       }
 
