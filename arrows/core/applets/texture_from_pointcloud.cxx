@@ -61,6 +61,10 @@ check_config( kwiver::vital::config_block_sptr config )
     validate_required_input_file( "point_cloud_file", *config, main_logger ) &&
     config_valid;
 
+  config_valid =
+    validate_required_output_dir( "output_directory", *config,  main_logger, true ) &&
+    config_valid;
+
 #undef KWIVER_CONFIG_FAIL
 
   return config_valid;
@@ -114,12 +118,20 @@ public:
 
   kwiver::vital::path_t mesh_directory;
   kwiver::vital::path_t point_cloud_file;
+  kwiver::vital::path_t output_directory;
 
   // Hard code image size for now
   unsigned int img_width = 500;
   unsigned int img_height = 500;
 
   std::string mesh_extension = ".obj";
+  std::string mtl_template = "newmtl mat\n"
+                             "Ka 1.0 1.0 1.0\n"
+                             "Kd 1.0 1.0 1.0\n"
+                             "d 1\n"
+                             "Ns 75\n"
+                             "illum 1\n"
+                             "map_Kd ";
 
   enum commandline_mode { SUCCESS, HELP, WRITE, FAIL };
 
@@ -165,6 +177,11 @@ public:
     {
       point_cloud_file = cmd_args[ "point-cloud-file" ].as< std::string >();
       config->set_value( "point_cloud_file", point_cloud_file );
+    }
+    if( cmd_args.count( "output-dir" ) > 0 )
+    {
+      output_directory = cmd_args[ "output-dir" ].as< std::string >();
+      config->set_value( "output_directory", output_directory );
     }
 
     bool valid_config = check_config( config );
@@ -271,7 +288,7 @@ public:
     for (unsigned long i = 0; i < num_mesh_files; ++i )
     {
       std::string mesh_path = mesh_dir.GetPath();
-      std::string mesh_file = mesh_path + "/" + std::string( mesh_dir.GetFile( i ) );
+      std::string mesh_file = std::string( mesh_dir.GetFile( i ) );
       if ( kwiversys::SystemTools::GetFilenameLastExtension( mesh_file ) == mesh_extension )
       {
         // Check first file for UTM correction
@@ -281,7 +298,7 @@ public:
           has_utm_corr = true;
         }
 
-        auto input_mesh = kwiver::vital::read_mesh( mesh_file );
+        auto input_mesh = kwiver::vital::read_mesh( mesh_path + "/" + mesh_file );
 
         if ( input_mesh->faces().regularity() != 3 )
         {
@@ -292,11 +309,24 @@ public:
 
         auto tex_image = texture_mesh( point_cloud, input_mesh );
 
-        std::string image_file = mesh_path + "/" +
-          kwiversys::SystemTools::GetFilenameWithoutExtension( mesh_file ) +
-          ".png";
+        // Write out the texture image file
+        std::string image_file =
+          kwiversys::SystemTools::GetFilenameWithoutExtension( mesh_file ) + ".png";
 
-        image_writer->save( image_file, tex_image );
+        image_writer->save( output_directory + "/" + image_file, tex_image );
+
+        // Write out the mtl file
+        std::string mtl_filename =
+          kwiversys::SystemTools::GetFilenameWithoutExtension( mesh_file ) + ".mtl";
+        std::ofstream mtl_file( output_directory + "/" + mtl_filename );
+        mtl_file << mtl_template << image_file << std::endl;
+        mtl_file.close();
+
+        // Write out the new mesh file
+        std::string mesh_filename =
+          kwiversys::SystemTools::GetFilenameWithoutExtension( mesh_file ) + ".obj";
+        input_mesh->set_tex_source( mtl_filename );
+        kwiver::vital::write_obj( output_directory + "/" + mesh_filename, *input_mesh );
       }
     }
   }
@@ -430,12 +460,14 @@ texture_from_pointcloud
                                 "This tool texures a set of meshes using point cloud data.\n"
                                 "\n"
                                 "Usage: kwiver " + applet_name() +
-                                " [options] mesh-dir point-cloud-file" ) );
+                                " [options] mesh-dir point-cloud-file output-dir" ) );
 
   m_cmd_options->positional_help( "\n mesh-dir         - directory that holds "
                                   "the mesh files."
                                   "\n point-cloud-file - the file that contains "
-                                  "the point cloud data." );
+                                  "the point cloud data."
+                                  "\n output-dir       - directory where the new"
+                                  " the new files will be written.");
 
   m_cmd_options->add_options()
     ( "h,help",          "Display usage information" )
@@ -444,9 +476,10 @@ texture_from_pointcloud
     ( "m,mesh-ext",      "Mesh file extension, defaults to *.obj", cxxopts::value< std::string >() )
     // positional parameters
     ( "mesh-dir",         "Mesh directory", cxxopts::value< std::string >() )
-    ( "point-cloud-file", "Point cloud file name", cxxopts::value< std::string >() );
+    ( "point-cloud-file", "Point cloud file name", cxxopts::value< std::string >() )
+    ( "output-dir",       "Directory to write new files too", cxxopts::value< std::string >() );
 
-  m_cmd_options->parse_positional( { "mesh-dir", "point-cloud-file" } );
+  m_cmd_options->parse_positional( { "mesh-dir", "point-cloud-file", "output-dir" } );
 }
 
 // ----------------------------------------------------------------
