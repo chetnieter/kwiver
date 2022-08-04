@@ -78,6 +78,12 @@ pointcloud_io
                   point_view->hasDim(::pdal::Dimension::Id::Green) &&
                   point_view->hasDim(::pdal::Dimension::Id::Blue);
 
+  ::pdal::Dimension::Type colorType;
+  if ( hasColor )
+  {
+    colorType = point_view->dimType( ::pdal::Dimension::Id::Red );
+  }
+
   std::vector< kwiver::vital::vector_3d > positions;
   std::vector< kwiver::vital::rgb_color > colors;
 
@@ -89,14 +95,27 @@ pointcloud_io
 
     positions.push_back( kwiver::vital::vector_3d( x, y, z ) );
 
+    uint8_t red, blue, green;
     if ( hasColor )
     {
-      uint8_t red = point_view->getFieldAs< uint8_t >(
-        ::pdal::Dimension::Id::Red, idx );
-      uint8_t green = point_view->getFieldAs< uint8_t >(
-        ::pdal::Dimension::Id::Green, idx );
-      uint8_t blue = point_view->getFieldAs< uint8_t >(
-        ::pdal::Dimension::Id::Blue, idx );
+      if ( colorType == ::pdal::Dimension::Type::Unsigned16 )
+      {
+        red = point_view->getFieldAs< uint16_t >(
+          ::pdal::Dimension::Id::Red, idx ) / 256;
+        green = point_view->getFieldAs< uint16_t >(
+          ::pdal::Dimension::Id::Green, idx ) / 256;
+        blue = point_view->getFieldAs< uint16_t >(
+          ::pdal::Dimension::Id::Blue, idx ) / 256;
+      }
+      else
+      {
+        red = point_view->getFieldAs< uint8_t >(
+          ::pdal::Dimension::Id::Red, idx );
+        green = point_view->getFieldAs< uint8_t >(
+          ::pdal::Dimension::Id::Green, idx );
+        blue = point_view->getFieldAs< uint8_t >(
+          ::pdal::Dimension::Id::Blue, idx );
+      }
 
       colors.push_back( kwiver::vital::rgb_color( red, green, blue ) );
     }

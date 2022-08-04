@@ -328,6 +328,17 @@ public:
   {
     kwiver::vital::image texture_image( img_width, img_height, 3 );
 
+    // Zero out image
+    for ( size_t i = 0; i < img_width; ++i )
+    {
+      for ( size_t j = 0; j < img_width; ++j )
+      {
+        texture_image.at<uint8_t>( i, j, 0 ) = 0;
+        texture_image.at<uint8_t>( i, j, 1 ) = 0;
+        texture_image.at<uint8_t>( i, j, 2 ) = 0;
+      }
+    }
+
     std::shared_ptr< kwiver::vital::mesh_face_array > faces =
       std::make_shared< kwiver::vital::mesh_face_array >( mesh->faces() );
     auto vertices = mesh->vertices<3>();
