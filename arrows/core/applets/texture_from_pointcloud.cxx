@@ -283,21 +283,12 @@ public:
     mesh_dir.Load(mesh_directory);
     auto num_mesh_files = mesh_dir.GetNumberOfFiles();
 
-    std::vector<double> utm_corr;
-    bool has_utm_corr = false;
     for (unsigned long i = 0; i < num_mesh_files; ++i )
     {
       std::string mesh_path = mesh_dir.GetPath();
       std::string mesh_file = std::string( mesh_dir.GetFile( i ) );
       if ( kwiversys::SystemTools::GetFilenameLastExtension( mesh_file ) == mesh_extension )
       {
-        // Check first file for UTM correction
-        if ( !has_utm_corr )
-        {
-          utm_corr = get_utm_correction( mesh_file );
-          has_utm_corr = true;
-        }
-
         auto input_mesh = kwiver::vital::read_mesh( mesh_path + "/" + mesh_file );
 
         if ( input_mesh->faces().regularity() != 3 )
@@ -329,36 +320,6 @@ public:
         kwiver::vital::write_obj( output_directory + "/" + mesh_filename, *input_mesh );
       }
     }
-  }
-
-  std::vector<double>
-  get_utm_correction( kwiver::vital::path_t mesh_file )
-  {
-    std::vector<double> correction = {0., 0., 0.};
-
-    std::ifstream file;
-    file.open( mesh_file );
-    std::string line;
-    if ( file )
-    {
-      for ( size_t i = 0; i < 3; ++i )
-      {
-        if ( std::getline( file, line ) )
-        {
-          std::vector< std::string > keys = { "#x", "#y", "#z "};
-          for ( size_t j = 0; j < 3; ++j )
-          {
-            if ( line.rfind( keys[j], 0 ) == 0 )
-            {
-              correction[j] = std::stod( line.substr( line.rfind( " " ) ) );
-            }
-          }
-        }
-      }
-    }
-    file.close();
-
-    return correction;
   }
 
   kwiver::vital::image_container_sptr

@@ -275,12 +275,27 @@ read_obj(std::istream& is)
   std::unique_ptr<mesh_face_array> faces(new mesh_face_array);
   std::vector<vector_3d> normals;
   std::vector<vector_2d> tex;
+  vector_3d utm_correction = { 0., 0., 0. };
   std::string last_group = "ungrouped";
   char c;
   while (is >> c)
   {
     switch (c)
     {
+      case '#': // Check for UTM correction
+      {
+        std::string line;
+        std::getline(is,line);
+        std::vector< std::string > keys = { "x", "y", "z"};
+        for ( size_t j = 0; j < 3; ++j )
+        {
+          if ( line.rfind( keys[j] + " offset:", 0 ) == 0 )
+          {
+            utm_correction[j] = std::stod( line.substr( line.rfind( " " ) ) );
+          }
+        }
+        break;
+      }
       case 'v': // read a vertex
       {
         char c2 = static_cast<char>(is.peek());
@@ -307,7 +322,7 @@ read_obj(std::istream& is)
           {
             double x,y,z;
             is >> x >> y >> z;
-            verts->push_back(vector_3d(x,y,z));
+            verts->push_back(vector_3d(x,y,z) + utm_correction);
             break;
           }
         }
