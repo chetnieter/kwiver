@@ -309,7 +309,9 @@ public:
 
   void load_landmarks()
   {
-    landmark_map = read_ply_file(input_landmarks_file);
+    const std::string landmarks_file =
+      config->get_value<std::string>("input_landmarks_file");
+    landmark_map = read_ply_file(landmarks_file);
   }
 
   std::vector<std::string>
