@@ -281,7 +281,9 @@ public:
 
   void load_landmarks( )
   {
-    landmark_map = read_ply_file(input_landmarks_file);
+    const std::string landmarks_file =
+      config->get_value<std::string>("input_landmarks_file");
+    landmark_map = read_ply_file(landmarks_file);
   }
 
   void load_camera_map()
@@ -311,7 +313,9 @@ public:
       const std::string name = basename_from_metadata(mdv, frame_ID);
       try
       {
-        cameras[frame_ID] = read_krtd_file( name, input_cameras_directory );
+        const std::string camera_dir =
+          config->get_value<std::string>("input_cameras_directory");
+        cameras[frame_ID] = read_krtd_file( name, camera_dir );
       }
       catch ( const file_not_found_exception& )
       {
@@ -347,8 +351,9 @@ public:
 
     auto const mdv = metadata.at(frame);
     const std::string basename = basename_from_metadata(mdv, frame);
-    std::string output_filename = output_depths_directory + "/"
-                                  + basename + ".vti";
+    const std::string depths_directory =
+      config->get_value<std::string>("output_depths_directory");
+    std::string output_filename = depths_directory + "/" + basename + ".vti";
     writer->SetFileName(output_filename.c_str());
     writer->SetInputData(depth_image);
     writer->Write();
@@ -477,7 +482,8 @@ public:
     kv::camera_perspective_map pcm;
     pcm.set_from_base_camera_map(camera_map->cameras());
 
-    video_reader->open( video_source );
+    const std::string video_file = config->get_value<std::string>("video_source");
+    video_reader->open( video_file );
 
     if (has_mask)
     {
